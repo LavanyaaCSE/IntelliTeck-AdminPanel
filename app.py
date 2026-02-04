@@ -3,6 +3,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import pandas as pd
 import json
+import os
+from datetime import datetime, time, timedelta
 
 # Page config
 st.set_page_config(
@@ -15,9 +17,11 @@ st.set_page_config(
 @st.cache_resource
 def init_firebase():
     if not firebase_admin._apps:
-        # You'll need to download your service account key from Firebase Console
-        # Go to: Project Settings > Service Accounts > Generate New Private Key
-        cred = credentials.Certificate("firebase-admin-key.json")
+        # Get the path to the current script's directory
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        key_path = os.path.join(base_dir, "firebase-admin-key.json")
+        
+        cred = credentials.Certificate(key_path)
         firebase_admin.initialize_app(cred)
     
     # Use the 'intellitrain' database instead of default
@@ -25,7 +29,9 @@ def init_firebase():
     from google.oauth2 import service_account
     
     # Load credentials from the same file
-    creds = service_account.Credentials.from_service_account_file("firebase-admin-key.json")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    key_path = os.path.join(base_dir, "firebase-admin-key.json")
+    creds = service_account.Credentials.from_service_account_file(key_path)
     return Client(project='intellitrain-3fc95', credentials=creds, database='intellitrain')
 
 db = init_firebase()
@@ -33,7 +39,7 @@ db = init_firebase()
 # Sidebar
 st.sidebar.title("🎓 IntelliTrain Admin")
 st.sidebar.markdown("---")
-page = st.sidebar.radio("Navigation", ["📋 View Assessments", "➕ Add Assessment", "✏️ Edit Questions", "📊 Upload CSV"])
+page = st.sidebar.radio("Navigation", ["📋 View Assessments", "➕ Add Assessment", "⏰ Upcoming Tests", "✏️ Edit Questions", "📊 Upload CSV"])
 
 # Main content
 st.title("IntelliTrain Assessment Manager")
@@ -123,6 +129,130 @@ elif page == "➕ Add Assessment":
                 st.balloons()
             else:
                 st.error("Please fill in Assessment ID and Title")
+
+elif page == "⏰ Upcoming Tests":
+    st.header("Schedule Upcoming Tests")
+    
+    tab1, tab2 = st.tabs(["📅 View Scheduled", "➕ Schedule New"])
+    
+    with tab1:
+        st.subheader("Currently Scheduled Tests")
+        upcoming_ref = db.collection('upcoming_tests')
+        docs = upcoming_ref.stream()
+        
+        upcoming_tests = []
+        for doc in docs:
+            t_data = doc.to_dict()
+            t_data['id'] = doc.id
+            upcoming_tests.append(t_data)
+        
+        if upcoming_tests:
+            # Sort by startTime for view
+            upcoming_tests.sort(key=lambda x: x.get('startTime', datetime.now()))
+            
+            for test in upcoming_tests:
+                start = test.get('startTime')
+                end = test.get('endTime')
+                
+                # Format times for display if they are datetime objects and convert to local
+                start_str = start.astimezone().strftime("%d %b, %H:%M") if hasattr(start, 'astimezone') else str(start)
+                end_str = end.astimezone().strftime("%d %b, %H:%M") if hasattr(end, 'astimezone') else str(end)
+                
+                with st.expander(f"📌 {test['title']} ({start_str})"):
+                    col1, col2 = st.columns(2)
+                    col1.write(f"**Category:** {test.get('category')}")
+                    col1.write(f"**Duration:** {test.get('durationMinutes')} mins")
+                    col1.write(f"**Status:** {'🟢 Published' if test.get('isPublished') else '🔴 Draft'}")
+                    
+                    col2.write(f"**Starts:** {start_str}")
+                    col2.write(f"**Ends:** {end_str}")
+                    
+                    st.divider()
+                    st.write(f"**Questions ({len(test.get('questions', []))})**")
+                    for i, q in enumerate(test.get('questions', []), 1):
+                        st.write(f"{i}. {q['text']}")
+                    
+                    if st.button(f"🗑️ Delete {test['title']}", key=f"del_test_{test['id']}"):
+                        db.collection('upcoming_tests').document(test['id']).delete()
+                        st.success("Test deleted!")
+                        st.rerun()
+        else:
+            st.info("No tests scheduled yet.")
+
+    with tab2:
+        st.subheader("Schedule a New Test")
+        
+        with st.form("schedule_test"):
+            t_title = st.text_input("Test Title", placeholder="e.g., Weekly Technical Sprint")
+            t_cat = st.selectbox("Category", ["Technical", "General"])
+            t_desc = st.text_area("Description", placeholder="What is this test about?")
+            
+            c1, c2 = st.columns(2)
+            s_date = c1.date_input("Start Date", value=datetime.now().date())
+            s_time = c1.time_input("Start Time", value=datetime.now().time())
+            
+            e_date = c2.date_input("End Date", value=datetime.now().date())
+            e_time = c2.time_input("End Time", value=(datetime.now() + timedelta(hours=2)).time())
+            
+            t_dur = st.number_input("Duration (Minutes)", min_value=1, value=30)
+            t_topics = st.text_input("Topics (comma separated)", placeholder="Python, SQL, Logic")
+            t_pub = st.checkbox("Publish Immediately", value=True)
+            
+            st.divider()
+            st.subheader("Add Questions")
+            num_q = st.number_input("Number of questions", min_value=1, max_value=20, value=3, key="upcoming_num_q")
+            
+            upcoming_questions = []
+            for i in range(num_q):
+                st.markdown(f"**Question {i+1}**")
+                uq_text = st.text_area(f"Text", key=f"upcoming_q_text_{i}")
+                
+                c1, c2 = st.columns(2)
+                uo1 = c1.text_input(f"Option A", key=f"upcoming_opt1_{i}")
+                uo2 = c2.text_input(f"Option B", key=f"upcoming_opt2_{i}")
+                uo3 = c1.text_input(f"Option C", key=f"upcoming_opt3_{i}")
+                uo4 = c2.text_input(f"Option D", key=f"upcoming_opt4_{i}")
+                
+                ucorrect = st.selectbox(f"Correct", ["A", "B", "C", "D"], key=f"upcoming_correct_{i}")
+                uconcept = st.text_input(f"Concept", key=f"upcoming_concept_{i}")
+                udiff = st.selectbox(f"Difficulty", ["Easy", "Medium", "Hard"], key=f"upcoming_diff_{i}")
+                
+                upcoming_questions.append({
+                    'id': f'uq_{i+1}_{datetime.now().strftime("%Y%m%d%H%M")}',
+                    'text': uq_text,
+                    'options': [uo1, uo2, uo3, uo4],
+                    'correctOptionIndex': ord(ucorrect) - ord('A'),
+                    'concept': uconcept,
+                    'difficulty': udiff,
+                    'section': t_cat
+                })
+            
+            t_submit = st.form_submit_button("Schedule Test & Add Questions")
+            
+            if t_submit:
+                if t_title:
+                    # Combine into datetime objects and attach local timezone
+                    start_dt = datetime.combine(s_date, s_time).astimezone()
+                    end_dt = datetime.combine(e_date, e_time).astimezone()
+                    
+                    new_test_data = {
+                        "title": t_title,
+                        "category": t_cat,
+                        "description": t_desc,
+                        "startTime": start_dt,
+                        "endTime": end_dt,
+                        "durationMinutes": int(t_dur),
+                        "topics": [t.strip() for t in t_topics.split(",") if t.strip()],
+                        "questions": upcoming_questions,
+                        "isPublished": t_pub
+                    }
+                    
+                    db.collection('upcoming_tests').add(new_test_data)
+                    st.success(f"✅ Test '{t_title}' has been scheduled!")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("Title is required!")
 
 elif page == "✏️ Edit Questions":
     st.header("Edit Existing Questions")
