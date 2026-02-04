@@ -15,24 +15,24 @@ st.set_page_config(
 
 # Initialize Firebase Admin (only once)
 @st.cache_resource
+@st.cache_resource
 def init_firebase():
     if not firebase_admin._apps:
-        # Get the path to the current script's directory
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        key_path = os.path.join(base_dir, "firebase-admin-key.json")
-        
-        cred = credentials.Certificate(key_path)
+        cred = credentials.Certificate(dict(st.secrets["firebase"]))
         firebase_admin.initialize_app(cred)
-    
-    # Use the 'intellitrain' database instead of default
+
     from google.cloud.firestore import Client
     from google.oauth2 import service_account
-    
-    # Load credentials from the same file
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    key_path = os.path.join(base_dir, "firebase-admin-key.json")
-    creds = service_account.Credentials.from_service_account_file(key_path)
-    return Client(project='intellitrain-3fc95', credentials=creds, database='intellitrain')
+
+    creds = service_account.Credentials.from_service_account_info(
+        dict(st.secrets["firebase"])
+    )
+
+    return Client(
+        project="intellitrain-3fc95",
+        credentials=creds,
+        database="intellitrain"
+    )
 
 db = init_firebase()
 
