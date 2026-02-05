@@ -1,5 +1,5 @@
-streamlit==1.31.0
-firebase-admin==6.4.0
-pandas==2.2.0
+streamlit
+firebase-admin
+pandas
 google-cloud-firestore
 google-auth
