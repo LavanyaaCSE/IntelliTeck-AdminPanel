@@ -2,9 +2,9 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 import pandas as pd
-import json
+from datetime import datetime, timedelta
 import os
-from datetime import datetime, time, timedelta
+import json
 
 # Page config
 st.set_page_config(
@@ -15,23 +15,45 @@ st.set_page_config(
 
 # Initialize Firebase Admin (only once)
 @st.cache_resource
-@st.cache_resource
 def init_firebase():
+    cred_dict = None
+    
+    # 1. Check for Local File FIRST (Avoids Streamlit Secrets warning when running locally)
+    if os.path.exists("firebase-admin-key.json"):
+        with open("firebase-admin-key.json") as f:
+            cred_dict = json.load(f)
+            
+    # 2. Try Env Var
+    elif "FIREBASE_SERVICE_ACCOUNT" in os.environ:
+        cred_dict = json.loads(os.environ["FIREBASE_SERVICE_ACCOUNT"])
+
+    # 3. Try Streamlit Secrets (for Cloud deployment only)
+    else:
+        try:
+            if "firebase" in st.secrets:
+                cred_dict = dict(st.secrets["firebase"])
+        except:
+            pass
+
+    if not cred_dict:
+        st.error("❌ Firebase credentials missing!")
+        st.info("Please ensure `firebase-admin-key.json` exists in this folder.")
+        st.stop()
+
+    # Initialize Firebase Admin (only once)
     if not firebase_admin._apps:
-        cred = credentials.Certificate(dict(st.secrets["firebase"]))
+        cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
 
-    from google.cloud.firestore import Client
+    # Use the specific database name 'intellitrain'
+    from google.cloud import firestore as google_firestore
     from google.oauth2 import service_account
-
-    creds = service_account.Credentials.from_service_account_info(
-        dict(st.secrets["firebase"])
-    )
-
-    return Client(
-        project="intellitrain-3fc95",
-        credentials=creds,
-        database="intellitrain"
+    
+    google_creds = service_account.Credentials.from_service_account_info(cred_dict)
+    return google_firestore.Client(
+        credentials=google_creds, 
+        project=google_creds.project_id, 
+        database='intellitrain'
     )
 
 db = init_firebase()

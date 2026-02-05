@@ -27,46 +27,52 @@ streamlit run app.py
 
 The admin panel will open in your browser at `http://localhost:8501`
 
-## Features
-
-- 📋 **View Assessments**: See all your tests and questions
-- ➕ **Add Assessment**: Create new tests with questions
-- ✏️ **Edit Questions**: Modify existing questions
-- 📊 **Upload CSV**: Bulk upload questions from Excel/CSV
+---
 
 ## Deploy to Streamlit Cloud (FREE)
 
-1. Push this folder to a GitHub repository
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Sign in with GitHub
-4. Click "New app"
-5. Select your repository and this folder
-6. Add your `firebase-admin-key.json` content to Secrets:
-   - Go to app settings > Secrets
-   - Paste the entire JSON content
-   - Update `app.py` line 16 to use secrets instead of file
+### Step 1: Push to GitHub
+1. Create a new repository on GitHub.
+2. Push this code to the repository (excluding `firebase-admin-key.json`).
 
-### Using Secrets in Streamlit Cloud
+### Step 2: Connect to Streamlit Cloud
+1. Go to [share.streamlit.io](https://share.streamlit.io).
+2. Click **New app** and select your GitHub repo.
+3. Click **Deploy!**
 
-Replace line 16-17 in `app.py` with:
-
-```python
-import json
-cred_dict = json.loads(st.secrets["firebase_admin_key"])
-cred = credentials.Certificate(cred_dict)
-```
-
-Then in Streamlit Cloud secrets, paste your entire `firebase-admin-key.json` content like:
+### Step 3: Configure Secrets (CRITICAL)
+Once the app is deploying:
+1. Go to your App Dashboard on Streamlit Cloud.
+2. Click the **three dots** ⋮ next to your app and select **Settings**.
+3. Go to the **Secrets** tab.
+4. Copy the entire contents of your `firebase-admin-key.json` file.
+5. Paste it into the Secrets box using this exact format:
 
 ```toml
-firebase_admin_key = '''
-{
-  "type": "service_account",
-  "project_id": "intellitrain-3fc95",
-  ...
-}
-'''
+[firebase]
+type = "service_account"
+project_id = "intellitrain-3fc95"
+private_key_id = "..."
+private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+client_email = "..."
+client_id = "..."
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "..."
+universe_domain = "googleapis.com"
 ```
+
+*Note: Streamlit understands the flat JSON structure if you paste it correctly under the `[firebase]` header.*
+
+---
+
+## Features
+
+- 📋 **View Assessments**: See all your tests and questions.
+- ➕ **Add Assessment**: Create new tests with questions.
+- ✏️ **Edit Questions**: Modify existing questions.
+- 📊 **Upload CSV**: Bulk upload questions from Excel/CSV.
 
 ## CSV Upload Format
 
@@ -79,7 +85,6 @@ Create a CSV with these columns:
 ## Security
 
 ⚠️ **Important**: 
-- Never commit `firebase-admin-key.json` to GitHub
-- Add it to `.gitignore`
-- Use Streamlit Secrets for deployment
-- Only share the admin panel URL with trusted admins
+- **Never** commit `firebase-admin-key.json` to GitHub.
+- Ensure `.gitignore` includes `firebase-admin-key.json`.
+- Only share the admin panel URL with authorized staff.
