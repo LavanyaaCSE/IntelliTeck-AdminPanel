@@ -61,7 +61,7 @@ db = init_firebase()
 # Sidebar
 st.sidebar.title("🎓 IntelliTrain Admin")
 st.sidebar.markdown("---")
-page = st.sidebar.radio("Navigation", ["📋 View Assessments", "➕ Add Assessment", "⏰ Upcoming Tests", "✏️ Edit Questions", "📊 Upload CSV"])
+page = st.sidebar.radio("Navigation", ["📋 View Assessments", "➕ Add Assessment", "⏰ Upcoming Tests", "✏️ Edit Questions", "📊 Upload CSV", "💼 Manage Jobs"])
 
 # Main content
 st.title("IntelliTrain Assessment Manager")
@@ -435,6 +435,121 @@ elif page == "📊 Upload CSV":
                     st.warning(f"⚠️ Assessment {assessment_id} doesn't exist. Create it first in 'Add Assessment' page.")
             
             st.balloons()
+
+elif page == "💼 Manage Jobs":
+    st.header("Job Postings Manager")
+    
+    tab1, tab2 = st.tabs(["📋 View Jobs", "➕ Add Job"])
+    
+    with tab1:
+        st.subheader("Current Job Openings")
+        jobs_ref = db.collection('jobs')
+        docs = jobs_ref.stream()
+        
+        jobs = []
+        for doc in docs:
+            j_data = doc.to_dict()
+            j_data['id'] = doc.id
+            jobs.append(j_data)
+        
+        if jobs:
+            # Sort by timestamp if available
+            jobs.sort(key=lambda x: x.get('timestamp', datetime.now()), reverse=True)
+            
+            for job in jobs:
+                with st.expander(f"🏢 {job.get('title')} at {job.get('company')}"):
+                    col1, col2 = st.columns(2)
+                    col1.write(f"**Location:** {job.get('location')}")
+                    col1.write(f"**Type:** {job.get('type')}")
+                    col1.write(f"**Mode:** {job.get('mode')}")
+                    
+                    col2.write(f"**Posted On:** {job.get('postedDate')}")
+                    if job.get('link'):
+                        col2.write(f"**Link:** [Apply Now]({job.get('link')})")
+                    
+                    st.divider()
+                    st.write("**Description:**")
+                    st.write(job.get('description'))
+                    
+                    if st.button(f"🗑️ Delete Job", key=f"del_job_{job['id']}"):
+                        db.collection('jobs').document(job['id']).delete()
+                        st.success("Job deleted!")
+                        st.rerun()
+        else:
+            st.info("No jobs found. Add one using the 'Add Job' tab!")
+
+    with tab2:
+        st.subheader("Add a New Job Posting")
+        
+        # Link to prompt user for LinkedIn URL
+        st.info("💡 You can manually enter details or paste a LinkedIn Job URL to try and auto-fill.")
+        
+        li_url_input = st.text_input("LinkedIn Job URL (for reference or auto-fill)")
+        
+        if st.button("Attempt Auto-fill"):
+            if li_url_input:
+                st.warning("LinkedIn often blocks direct fetching. I'll attempt to extract basic info from the URL.")
+                # Basic parsing from URL slugs if possible
+                # Example: https://www.linkedin.com/jobs/view/software-engineer-at-company-12345/
+                if "linkedin.com/jobs/view/" in li_url_input:
+                    try:
+                        slug = li_url_input.split("/view/")[1].split("/")[0]
+                        parts = slug.split("-at-")
+                        if len(parts) > 1:
+                            st.session_state['auto_title'] = parts[0].replace("-", " ").title()
+                            st.session_state['auto_company'] = parts[1].replace("-", " ").title()
+                            st.success(f"Extracted: {st.session_state['auto_title']} at {st.session_state['auto_company']}")
+                        else:
+                            # Try other format: software-engineer-company-12345
+                            title_parts = parts[0].split("-")
+                            st.session_state['auto_title'] = " ".join(title_parts[:-1]).title()
+                            st.success(f"Extracted: {st.session_state['auto_title']}")
+                    except Exception as e:
+                        st.error(f"Error parsing URL: {str(e)}")
+                else:
+                    st.error("Could not auto-fill. Please enter manually.")
+            else:
+                st.error("Please enter a URL first!")
+
+        with st.form("add_job_form"):
+            default_title = st.session_state.get('auto_title', "")
+            default_company = st.session_state.get('auto_company', "")
+            
+            j_title = st.text_input("Job Title", value=default_title, placeholder="e.g., Software Engineer")
+            j_company = st.text_input("Company Name", value=default_company, placeholder="e.g., Google")
+            j_location = st.text_input("Location", placeholder="e.g., Mountain View, CA")
+            
+            c1, c2 = st.columns(2)
+            j_type = c1.selectbox("Job Type", ["Full-time", "Part-time", "Contract", "Internship"])
+            j_mode = c2.selectbox("Work Mode", ["Remote", "On-site", "Hybrid"])
+            
+            j_link = st.text_input("Application Link", value=li_url_input)
+            j_desc = st.text_area("Job Description", height=200, placeholder="Paste the job description or highlights here...")
+            
+            j_submit = st.form_submit_button("Post Job")
+            
+            if j_submit:
+                if j_title and j_company:
+                    new_job = {
+                        "title": j_title,
+                        "company": j_company,
+                        "location": j_location,
+                        "type": j_type,
+                        "mode": j_mode,
+                        "link": j_link,
+                        "description": j_desc,
+                        "postedDate": datetime.now().strftime("%d %b %Y"),
+                        "timestamp": datetime.now()
+                    }
+                    db.collection('jobs').add(new_job)
+                    st.success(f"✅ Job '{j_title}' at '{j_company}' added!")
+                    # Clear session state
+                    if 'auto_title' in st.session_state: del st.session_state['auto_title']
+                    if 'auto_company' in st.session_state: del st.session_state['auto_company']
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("Title and Company are required!")
 
 # Footer
 st.sidebar.markdown("---")
